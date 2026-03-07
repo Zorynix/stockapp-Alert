@@ -3,6 +3,7 @@ package ru.tuganov.exception;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -36,6 +37,19 @@ public class GlobalExceptionHandler {
                 .map(e -> "%s: %s".formatted(e.getField(), e.getDefaultMessage()))
                 .collect(Collectors.joining("; "));
         log.warn("Validation failed: {}", errors);
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, errors);
+        problem.setTitle("Validation Error");
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
+    /** Обработка нарушений ограничений на параметры запроса (@Validated) — возвращает HTTP 400. */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
+        String errors = ex.getConstraintViolations().stream()
+                .map(cv -> cv.getMessage())
+                .collect(Collectors.joining("; "));
+        log.warn("Constraint violation: {}", errors);
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, errors);
         problem.setTitle("Validation Error");
         problem.setProperty("timestamp", Instant.now());
