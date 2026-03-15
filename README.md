@@ -9,15 +9,17 @@
 
 | Сервис | Порт | Зона ответственности |
 |--------|------|----------------------|
-| MarketDataService | 8080 | Поиск инструментов, свечи |
+| **API Gateway** | 8080 | Единая точка входа, JWT-валидация, CORS |
 | AuthService | 8081 | Аутентификация, профили, JWT |
 | **AlertService** (этот) | 8082 | Ценовые алерты, мониторинг, уведомления, отчёты |
+| MarketDataService | 8083 | Поиск инструментов, свечи |
+| PortfolioService | 8084 | Портфель, счета |
+
+Все запросы приходят через API Gateway (`localhost:8080`), который валидирует JWT и передаёт `X-User-Id` в заголовке для всех эндпоинтов AlertService.
 
 Все сервисы используют одну PostgreSQL БД (`market_service`).
 AlertService **владеет** таблицами `tracked_instruments`, `notifications`, `shedlock`.
 Таблица `app_users` принадлежит AuthService — AlertService только читает из неё.
-
-JWT-токены выданные AuthService принимаются AlertService — оба сервиса используют один `JWT_SECRET`.
 
 ---
 
@@ -211,12 +213,15 @@ EOF
 ## Тестирование (xh)
 
 ```bash
-# Получить JWT (через AuthService)
-TOKEN=$(xh POST localhost:8081/api/auth/login \
+# Получить JWT (через API Gateway → AuthService)
+TOKEN=$(xh POST localhost:8080/api/auth/login \
   email=test@example.com password=secret | jq -r .token)
 
+# Все запросы идут через API Gateway (localhost:8080)
+# Gateway валидирует JWT и передаёт X-User-Id downstream
+
 # Создать алерт
-xh POST localhost:8082/api/tracked-instruments \
+xh POST localhost:8080/api/tracked-instruments \
   "Authorization:Bearer $TOKEN" \
   figi=BBG004730N88 \
   instrumentName=Сбербанк \
@@ -224,15 +229,15 @@ xh POST localhost:8082/api/tracked-instruments \
   sellPrice:=350.00
 
 # Список алертов
-xh GET localhost:8082/api/tracked-instruments \
+xh GET localhost:8080/api/tracked-instruments \
   "Authorization:Bearer $TOKEN"
 
 # История уведомлений
-xh GET localhost:8082/api/notifications \
+xh GET localhost:8080/api/notifications \
   "Authorization:Bearer $TOKEN"
 
 # Скачать отчёт за 3 месяца в PDF
-xh GET localhost:8082/api/reports/download \
+xh GET localhost:8080/api/reports/download \
   period==3m format==pdf \
   "Authorization:Bearer $TOKEN" \
   --download
